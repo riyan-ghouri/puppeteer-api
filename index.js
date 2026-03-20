@@ -16,11 +16,21 @@ app.get("/scrape", async (req, res) => {
     const page = await browser.newPage();
     await page.goto("https://ghouri.site", { waitUntil: "domcontentloaded" });
 
-    const title = await page.title();
+    const data = await page.evaluate(() => {
+      return {
+        title: document.title,
+        links: Array.from(document.querySelectorAll("a"))
+          .slice(0, 5)
+          .map((a) => ({
+            text: a.innerText,
+            href: a.href,
+          })),
+      };
+    });
 
     await browser.close();
 
-    res.json({ success: true, title });
+    res.json({ success: true, data });
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
