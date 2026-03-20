@@ -14,7 +14,7 @@ app.get("/scrape", async (req, res) => {
     });
 
     const page = await browser.newPage();
-    await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
+    await page.goto("https://ghouri.site", { waitUntil: "domcontentloaded" });
 
     const title = await page.title();
 
