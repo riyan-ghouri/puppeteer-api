@@ -2,15 +2,13 @@ const express = require("express");
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 
-const app = express(); // ✅ THIS was missing
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔥 Root route (test)
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// 🧾 Bill route
 app.get("/bill", async (req, res) => {
   const ref = req.query.ref;
 
@@ -18,30 +16,47 @@ app.get("/bill", async (req, res) => {
     return res.json({ success: false, error: "Reference number required" });
   }
 
+  let browser;
+
   try {
-    const browser = await puppeteer.launch({
-      args: [...chromium.args, "--no-sandbox"],
+    browser = await puppeteer.launch({
+      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
       executablePath: await chromium.executablePath(),
       headless: true,
     });
 
     const page = await browser.newPage();
 
+    // 🧠 make it look like real browser
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+    );
+
+    // 🔥 LOAD PAGE (more stable)
     await page.goto("https://bill.pitc.com.pk/mepcobill", {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle2",
+      timeout: 60000,
     });
 
-    await page.type('input[name="refno"]', ref);
+    // ⏳ wait for input
+    await page.waitForSelector('input[name="refno"]', { timeout: 30000 });
 
-    await Promise.all([
-      page.click('input[type="submit"]'),
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-    ]);
+    // ✍️ type ref
+    await page.type('input[name="refno"]', ref, { delay: 50 });
 
+    // 🔥 click WITHOUT relying on navigation
+    await page.click('input[type="submit"]');
+
+    // ⏳ manual wait (more reliable for this site)
+    await page.waitForTimeout(5000);
+
+    // 🧪 DEBUG + DATA
     const data = await page.evaluate(() => {
+      const text = document.body.innerText;
+
       return {
         title: document.title,
-        body: document.body.innerText.slice(0, 500) // debug
+        preview: text.slice(0, 800),
       };
     });
 
@@ -49,11 +64,11 @@ app.get("/bill", async (req, res) => {
 
     res.json({ success: true, data });
   } catch (err) {
+    if (browser) await browser.close();
     res.json({ success: false, error: err.message });
   }
 });
 
-// ✅ Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
