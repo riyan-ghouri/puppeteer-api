@@ -1,3 +1,16 @@
+const express = require("express");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
+
+const app = express(); // ✅ THIS was missing
+const PORT = process.env.PORT || 3000;
+
+// 🔥 Root route (test)
+app.get("/", (req, res) => {
+  res.send("Server is running 🚀");
+});
+
+// 🧾 Bill route
 app.get("/bill", async (req, res) => {
   const ref = req.query.ref;
 
@@ -18,24 +31,17 @@ app.get("/bill", async (req, res) => {
       waitUntil: "domcontentloaded",
     });
 
-    // 🧠 STEP 1: type reference number
     await page.type('input[name="refno"]', ref);
 
-    // 🧠 STEP 2: click submit button
     await Promise.all([
       page.click('input[type="submit"]'),
       page.waitForNavigation({ waitUntil: "domcontentloaded" }),
     ]);
 
-    // 🧠 STEP 3: extract bill data
     const data = await page.evaluate(() => {
-      const getText = (selector) =>
-        document.querySelector(selector)?.innerText || null;
-
       return {
-        name: getText("#customerName"),
-        amount: getText("#billAmount"),
-        dueDate: getText("#dueDate"),
+        title: document.title,
+        body: document.body.innerText.slice(0, 500) // debug
       };
     });
 
@@ -45,4 +51,9 @@ app.get("/bill", async (req, res) => {
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
+});
+
+// ✅ Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
