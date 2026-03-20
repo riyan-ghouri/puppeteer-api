@@ -9,60 +9,41 @@ app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-app.get("/bill", async (req, res) => {
-  const ref = req.query.ref;
+app.get("/screenshot", async (req, res) => {
+  const url = req.query.url;
 
-  if (!ref) {
-    return res.json({ success: false, error: "Reference number required" });
+  if (!url) {
+    return res.json({ success: false, error: "URL is required" });
   }
 
   let browser;
 
   try {
     browser = await puppeteer.launch({
-      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
+      args: [...chromium.args, "--no-sandbox"],
       executablePath: await chromium.executablePath(),
       headless: true,
     });
 
     const page = await browser.newPage();
 
-    // 🧠 make it look like real browser
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-    );
-
-    // 🔥 LOAD PAGE (more stable)
-    await page.goto("https://bill.pitc.com.pk/mepcobill", {
-      waitUntil: "networkidle2",
-      timeout: 60000,
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: 0,
     });
 
-    // ⏳ wait for input
-    await page.waitForSelector('input[name="refno"]', { timeout: 30000 });
-
-    // ✍️ type ref
-    await page.type('input[name="refno"]', ref, { delay: 50 });
-
-    // 🔥 click WITHOUT relying on navigation
-    await page.click('input[type="submit"]');
-
-    // ⏳ manual wait (more reliable for this site)
-    await page.waitForTimeout(5000);
-
-    // 🧪 DEBUG + DATA
-    const data = await page.evaluate(() => {
-      const text = document.body.innerText;
-
-      return {
-        title: document.title,
-        preview: text.slice(0, 800),
-      };
+    // take screenshot
+    const screenshot = await page.screenshot({
+      type: "png",
+      fullPage: true,
     });
 
     await browser.close();
 
-    res.json({ success: true, data });
+    // send image
+    res.setHeader("Content-Type", "image/png");
+    res.send(screenshot);
+
   } catch (err) {
     if (browser) await browser.close();
     res.json({ success: false, error: err.message });
