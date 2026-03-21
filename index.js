@@ -17,17 +17,13 @@ app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-app.get("/screenshot", async (req, res) => {
-  const url = req.query.url;
-  if (!url || !url.startsWith("http")) {
-    return res.status(400).json({
-      success: false,
-      error: "Valid URL is required (include http/https)",
-    });
-  }
+// Test login/session
+app.get("/test-login", async (req, res) => {
+  const url = req.query.url || "https://goodwallet.xyz/en";
 
   let browser;
   try {
+    // Launch Puppeteer on Render
     browser = await puppeteer.launch({
       args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       executablePath: await chromium.executablePath(),
@@ -36,7 +32,7 @@ app.get("/screenshot", async (req, res) => {
 
     const page = await browser.newPage();
 
-    // User-Agent to avoid bot detection
+    // Set User-Agent to avoid bot detection
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -44,18 +40,10 @@ app.get("/screenshot", async (req, res) => {
 
     await page.setViewport({ width: 1280, height: 800 });
 
-    // Optional: block heavy resources
-    await page.setRequestInterception(true);
-    page.on("request", (req) => {
-      const type = req.resourceType();
-      if (["image", "font", "media"].includes(type)) req.abort();
-      else req.continue();
-    });
-
-    // Go to page first
+    // Go to site
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-    // Inject session into localStorage (if exists)
+    // Inject saved session into localStorage
     if (SESSION && SESSION.localStorageData) {
       await page.evaluate((data) => {
         for (const key in data) {
@@ -63,15 +51,17 @@ app.get("/screenshot", async (req, res) => {
         }
       }, SESSION.localStorageData);
 
-      // reload page to apply session
+      // Reload to apply session
       await page.reload({ waitUntil: "networkidle2" });
     }
 
-    // Take screenshot
-    const screenshot = await page.screenshot({ type: "png", fullPage: true });
+    // Optional: check login state
+    const loggedIn = await page.evaluate(() => {
+      // Example: GoodWallet shows user name in localStorage
+      return !!localStorage.getItem("SIGNER_SESSION");
+    });
 
-    res.setHeader("Content-Type", "image/png");
-    res.send(screenshot);
+    res.json({ success: true, loggedIn });
 
   } catch (err) {
     console.error("❌ Error:", err.message);
