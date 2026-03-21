@@ -1,6 +1,7 @@
 const express = require("express");
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
+const { setTimeout: sleep } = require('node:timers/promises');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,7 +14,7 @@ const SESSION = {
 };
 
 app.get("/test-login", async (req, res) => {
-  const url = "https://goodwallet.xyz/en"; // force your target
+  const url = "https://goodwallet.xyz/en";
 
   let browser;
   try {
@@ -26,21 +27,20 @@ app.get("/test-login", async (req, res) => {
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",
         "--window-size=1280,800",
-        "--disable-web-security",           // sometimes helps with cross-origin issues
+        "--disable-web-security",
         "--ignore-certificate-errors",
       ],
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
       ignoreHTTPSErrors: true,
+      timeout: 90000, // give launch more breathing room on cold starts
     });
 
     const page = await browser.newPage();
 
-    // Aggressive stealth (do this BEFORE any navigation)
+    // Stealth injections early
     await page.evaluateOnNewDocument(() => {
-      // Remove webdriver flag
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
-      // Spoof plugins & languages
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
       Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
     });
@@ -53,7 +53,7 @@ app.get("/test-login", async (req, res) => {
       "Accept-Language": "en-US,en;q=0.9",
     });
 
-    // Very early injection — before any script runs
+    // Inject session on blank page
     await page.goto("about:blank");
 
     if (SESSION.localStorageData) {
@@ -63,52 +63,59 @@ app.get("/test-login", async (req, res) => {
           try {
             localStorage.setItem(key, value);
           } catch (e) {
-            console.error("localStorage set error:", e);
+            console.error("localStorage set error for key", key, ":", e);
           }
         }
       }, SESSION.localStorageData);
     }
 
     console.log("Navigating to target");
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
 
-    // Give Torus/Web3Auth time to initialize & try to reconstruct
-    await page.waitForTimeout(10000); // crucial — MPC fetch takes time
+    // Wait for potential MPC/network activity (replaced waitForTimeout)
+    console.log("Waiting 10 seconds for Torus/Web3Auth init...");
+    await sleep(10000);
 
-    // Better login check — try to see if signer / wallet is actually usable
+    // More realistic auth check
     const authState = await page.evaluate(() => {
       const signerSession = localStorage.getItem("SIGNER_SESSION");
-      const isLoggedIn = 
-        !!signerSession &&
-        window?.gooddollar?.wallet?.isConnected?.() ||    // if they expose something
-        document.querySelector('[data-testid="wallet-address"]') !== null || // heuristic
-        !!localStorage.getItem("web3auth_session");       // sometimes they use web3auth keys too
+      const web3authSession = localStorage.getItem("web3auth_session"); // sometimes present
+
+      // Heuristics for logged-in state (adjust based on what you see in devtools)
+      const maybeLoggedIn =
+        !!signerSession ||
+        !!web3authSession ||
+        !!document.querySelector('[data-testid="wallet-address"], .wallet-address, [class*="address"]') ||
+        window?.gooddollar?.wallet?.isConnected?.() ||
+        localStorage.getItem("user")?.includes("address");
 
       return {
         hasSignerSession: !!signerSession,
-        isLoggedInGuess: isLoggedIn,
-        visibleWalletAddress: document.querySelector('[data-testid="wallet-address"]')?.textContent || null,
-        consoleErrors: window.consoleErrors || [] // if you collect them
+        hasWeb3AuthSession: !!web3authSession,
+        isProbablyLoggedIn: maybeLoggedIn,
+        visibleWalletText: document.querySelector('[data-testid="wallet-address"], .wallet-address')?.textContent?.trim() || null,
+        localStorageKeys: Object.keys(localStorage).slice(0, 20), // limit output
       };
     });
 
     console.log("Auth state:", authState);
 
-    // Screenshot for debug (very helpful on Render)
-    await page.screenshot({ path: "/tmp/debug.png", fullPage: true });
-    console.log("Screenshot saved to /tmp/debug.png");
+    // Debug screenshot (Render /tmp is writable)
+    const screenshotPath = "/tmp/debug-" + Date.now() + ".png";
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    console.log("Screenshot saved:", screenshotPath);
 
     res.json({
       success: true,
       authState,
-      // base64 screenshot if you want to return it
+      note: "Check Render logs for console output & screenshot path (download via shell if needed)"
     });
 
   } catch (err) {
-    console.error("ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("ERROR in /test-login:", err.stack || err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack?.slice(0, 500) });
   } finally {
-    if (browser) await browser.close();
+    if (browser) await browser.close().catch(() => {});
   }
 });
 
