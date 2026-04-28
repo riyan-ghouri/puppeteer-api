@@ -1,3 +1,5 @@
+require('dotenv').config();   // ← Add this at the very top
+
 const express = require("express");
 const puppeteer = require("puppeteer");
 
@@ -6,12 +8,15 @@ const PORT = process.env.PORT || 3000;
 
 const TARGET_URL = "https://www.instagram.com";
 
-// ←←← PASTE YOUR SESSIONID HERE
-const SESSIONID = "48765906293%3AOOo51FF6Q1VPfP%3A22%3AAYjDA1WOtKk9rWp1e4JVOddI3Dciltimrp7_R8R9bg";   // ← Change this
-const dS_user_id = "48765906293";   // ← Change this
-const CRFTOKEN = "lOqVZfKBoEExZDZtNLgMJ23RasjfCC8J";   // ← Change this
+// Get session from environment variables
+const SESSIONID = process.env.SESSIONID;
+const DS_USER_ID = process.env.DS_USER_ID;
+const CSRFTOKEN = process.env.CSRFTOKEN;
 
-// Optional: Add more cookies if needed
+if (!SESSIONID || !DS_USER_ID || !CSRFTOKEN) {
+  console.warn("⚠️  Warning: Some Instagram session variables are missing!");
+}
+
 const COOKIES = [
   {
     name: "sessionid",
@@ -24,7 +29,7 @@ const COOKIES = [
   },
   {
     name: "csrftoken",
-    value: CRFTOKEN,
+    value: CSRFTOKEN,
     domain: ".instagram.com",
     path: "/",
     httpOnly: true,
@@ -33,14 +38,13 @@ const COOKIES = [
   },
   {
     name: "ds_user_id",
-    value: dS_user_id,
+    value: DS_USER_ID,
     domain: ".instagram.com",
     path: "/",
     httpOnly: true,
     secure: true,
     sameSite: "Lax"
   }
-  // You can add ds_user_id, csrftoken, etc. here
 ];
 
 app.get("/", async (req, res) => {
@@ -62,20 +66,19 @@ app.get("/", async (req, res) => {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
     );
 
-    // Set the session cookies before navigating
     console.log("Setting Instagram session cookies...");
     await page.setCookie(...COOKIES);
 
-    console.log("Opening Instagram with your session...");
+    console.log("Opening Instagram with session...");
     await page.goto(TARGET_URL, { 
       waitUntil: "domcontentloaded", 
       timeout: 60000 
     });
 
-    // Wait a bit for the page to recognize the session
     await new Promise(r => setTimeout(r, 8000));
 
     const title = await page.title();
+
     const isLoggedIn = await page.evaluate(() => {
       return !!document.querySelector('svg[aria-label="Home"]') || 
              document.body.innerText.includes("Profile");
@@ -83,7 +86,7 @@ app.get("/", async (req, res) => {
 
     res.json({
       success: true,
-      message: isLoggedIn ? "Logged in successfully using session" : "Opened Instagram (login status uncertain)",
+      message: isLoggedIn ? "✅ Logged in successfully using session" : "Opened Instagram (login status uncertain)",
       title: title,
       loggedIn: isLoggedIn
     });
