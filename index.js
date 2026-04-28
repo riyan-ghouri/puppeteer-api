@@ -5,55 +5,59 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const TARGET_URL = "https://www.instagram.com";
-const DEBUG_PORT = 9222;   // Remote debugging port
 
 app.get("/open", async (req, res) => {
   let browser;
 
   try {
-    console.log("Launching browser with remote debugging...");
-
     browser = await puppeteer.launch({
-      headless: true,                    // Must stay true on Render
+      headless: true,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-blink-features=AutomationControlled",
-        `--remote-debugging-port=${DEBUG_PORT}`,
-        "--remote-debugging-address=0.0.0.0",   // Allow external connection
-        "--window-size=1280,800"
+        "--remote-debugging-port=9222",
+        "--remote-debugging-address=0.0.0.0"
       ]
     });
 
     const page = await browser.newPage();
 
-    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+    );
 
-    console.log(`Opening ${TARGET_URL}`);
-    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    console.log("Opening Instagram...");
+    
+    await page.goto(TARGET_URL, { 
+      waitUntil: "domcontentloaded", 
+      timeout: 60000 
+    });
 
-    await new Promise(r => setTimeout(r, 8000));
+    await new Promise(r => setTimeout(r, 7000)); // Wait for page to load
 
     const title = await page.title();
 
+    console.log(`Instagram opened successfully | Title: ${title}`);
+
     res.json({
       success: true,
-      message: "Browser is running with remote debugging",
+      message: "Instagram opened successfully",
       title: title,
-      debugUrl: `http://your-app-name.onrender.com:${DEBUG_PORT}`,   // Change to your Render URL
-      howToConnect: "Open Chrome on your laptop → go to chrome://inspect → Configure → Add your Render URL with port 9222"
+      note: "Browser is running on Render server"
     });
 
   } catch (err) {
     console.error("Error:", err.message);
-    res.status(500).json({ success: false, error: err.message });
-  } finally {
-    // Do NOT close browser immediately if you want to inspect it
-    // browser.close() only when you want to end the session
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
+  // Note: Browser is NOT closed here so you can inspect it if needed
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`Remote debugging port: ${DEBUG_PORT}`);
+  console.log(`Target: ${TARGET_URL}`);
 });
