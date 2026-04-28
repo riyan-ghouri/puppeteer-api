@@ -2,13 +2,11 @@ FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
 
-# Clean install
-RUN npm ci
+# Use npm install instead of npm ci (because lock file is missing)
+RUN npm install
 
-# Copy the rest of the code
 COPY . .
 
 EXPOSE 3000
